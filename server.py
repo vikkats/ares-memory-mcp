@@ -74,12 +74,4 @@ def delete_memory(id: str) -> dict:
     qdrant.delete(collection_name=COLLECTION, points_selector=[id])
     return {"status": "deleted", "id": id}
 
-async def health(request):
-    return JSONResponse({"name": "ares-memory-mcp", "status": "ok"})
-
-app = Starlette(
-    routes=[
-        Route("/", health),
-        Mount("/mcp", app=mcp.streamable_http_app()),
-    ]
-)
+app = mcp.streamable_http_app()
