@@ -2,11 +2,13 @@ import os
 import uuid
 import requests
 
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route, Mount
+
 from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
-
-mcp = FastMCP("ares-memory")
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
@@ -38,15 +40,13 @@ def embed(text: str):
     r.raise_for_status()
     return r.json()["data"][0]["embedding"]
 
+mcp = FastMCP("ares-memory")
+
 @mcp.tool()
 def store_memory(text: str) -> dict:
     vector = embed(text)
     point_id = str(uuid.uuid4())
-    point = PointStruct(
-        id=point_id,
-        vector=vector,
-        payload={"text": text},
-    )
+    point = PointStruct(id=point_id, vector=vector, payload={"text": text})
     qdrant.upsert(collection_name=COLLECTION, points=[point])
     return {"status": "stored", "id": point_id, "memory": text}
 
@@ -74,4 +74,12 @@ def delete_memory(id: str) -> dict:
     qdrant.delete(collection_name=COLLECTION, points_selector=[id])
     return {"status": "deleted", "id": id}
 
-app = mcp.streamable_http_app()
+async def health(request):
+    return JSONResponse({"name": "ares-memory-mcp", "status": "ok"})
+
+app = Starlette(
+    routes=[
+        Route("/", health),
+        Mount("/mcp", app=mcp.streamable_http_app()),
+    ]
+)
