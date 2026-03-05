@@ -2,10 +2,9 @@ import os
 import uuid
 import requests
 
-from starlette.applications import Starlette
-from starlette.routing import Mount
-
+from starlette.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
@@ -39,7 +38,13 @@ def embed(text: str):
     r.raise_for_status()
     return r.json()["data"][0]["embedding"]
 
-mcp = FastMCP("ares-memory")
+# THE MAGIC FIX: Turning off the strict host checker for Railway
+mcp = FastMCP(
+    "ares-memory",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=False
+    )
+)
 
 @mcp.tool()
 def store_memory(text: str) -> dict:
@@ -73,7 +78,10 @@ def delete_memory(id: str) -> dict:
     qdrant.delete(collection_name=COLLECTION, points_selector=[id])
     return {"status": "deleted", "id": id}
 
-# The magic fix: Mounting the SSE app directly to the root
-app = Starlette(routes=[
-    Mount('/', app=mcp.sse_app())
-])
+sse = mcp.sse_app()
+app = CORSMiddleware(
+    app=sse,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
