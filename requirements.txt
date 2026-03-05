@@ -1,5 +1,5 @@
 mcp
+starlette
+uvicorn[standard]
 qdrant-client
 requests
-uvicorn
-starlette
