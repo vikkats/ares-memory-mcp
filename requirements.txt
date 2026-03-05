@@ -1,4 +1,5 @@
-fastapi
-uvicorn[standard]
+mcp
 qdrant-client
 requests
+uvicorn
+starlette
