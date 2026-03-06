@@ -2,10 +2,14 @@ import os
 import uuid
 import requests
 
+from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
+
 from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
@@ -14,7 +18,6 @@ COLLECTION = "ares_memory"
 
 qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
-# Create collection if missing
 collections = [c.name for c in qdrant.get_collections().collections]
 if COLLECTION not in collections:
     qdrant.create_collection(
@@ -38,7 +41,7 @@ def embed(text: str):
     r.raise_for_status()
     return r.json()["data"][0]["embedding"]
 
-mcp = FastMCP("ares-memory", host="0.0.0.0")
+mcp = FastMCP("ares-memory")
 
 @mcp.tool()
 def store_memory(text: str) -> dict:
@@ -56,7 +59,10 @@ def search_memory(query: str) -> list[dict]:
         query_vector=vector,
         limit=5,
     )
-    return [{"id": str(r.id), "text": r.payload.get("text", ""), "score": r.score} for r in results]
+    return [
+        {"id": str(r.id), "text": r.payload.get("text", ""), "score": r.score}
+        for r in results
+    ]
 
 @mcp.tool()
 def list_memories() -> list[dict]:
@@ -72,11 +78,18 @@ def delete_memory(id: str) -> dict:
     qdrant.delete(collection_name=COLLECTION, points_selector=[id])
     return {"status": "deleted", "id": id}
 
-# SSE at root (no Mount needed)
-sse_app = mcp.sse_app()
+async def health(_request):
+    return JSONResponse({"name": "ares-memory-mcp", "status": "ok"})
+
+app = Starlette(
+    routes=[
+        Route("/", health),
+        Mount("/mcp", app=mcp.streamable_http_app()),
+    ]
+)
 
 app = CORSMiddleware(
-    app=sse_app,
+    app=app,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
