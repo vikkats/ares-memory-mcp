@@ -3,8 +3,6 @@ import uuid
 import requests
 
 from starlette.middleware.cors import CORSMiddleware
-from starlette.applications import Starlette
-from starlette.routing import Mount
 from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
@@ -74,17 +72,11 @@ def delete_memory(id: str) -> dict:
     qdrant.delete(collection_name=COLLECTION, points_selector=[id])
     return {"status": "deleted", "id": id}
 
-# Mount SSE at /mcp (legacy transport)
+# SSE at root (no Mount needed)
 sse_app = mcp.sse_app()
 
-app = Starlette(
-    routes=[
-        Mount("/mcp", app=sse_app),
-    ]
-)
-
 app = CORSMiddleware(
-    app=app,
+    app=sse_app,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
