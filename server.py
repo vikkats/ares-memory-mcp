@@ -3,7 +3,9 @@ import uuid
 import requests
 
 from starlette.middleware.cors import CORSMiddleware
-from mcp.server.fastmcp import FastMCP   # ← keep your import
+from starlette.applications import Starlette
+from starlette.routing import Mount
+from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
@@ -38,12 +40,10 @@ def embed(text: str):
     r.raise_for_status()
     return r.json()["data"][0]["embedding"]
 
-# Initialize FastMCP – stateless_http is good for Railway/hosted
-mcp = FastMCP("ares-memory", stateless_http=True)
+mcp = FastMCP("ares-memory", host="0.0.0.0")
 
 @mcp.tool()
 def store_memory(text: str) -> dict:
-    """Store a new memory text in the vector database."""
     vector = embed(text)
     point_id = str(uuid.uuid4())
     point = PointStruct(id=point_id, vector=vector, payload={"text": text})
@@ -52,7 +52,6 @@ def store_memory(text: str) -> dict:
 
 @mcp.tool()
 def search_memory(query: str) -> list[dict]:
-    """Search for similar memories using semantic vector search."""
     vector = embed(query)
     results = qdrant.search(
         collection_name=COLLECTION,
@@ -63,7 +62,6 @@ def search_memory(query: str) -> list[dict]:
 
 @mcp.tool()
 def list_memories() -> list[dict]:
-    """List up to 50 recent memories (scroll)."""
     points, _ = qdrant.scroll(
         collection_name=COLLECTION,
         limit=50,
@@ -73,14 +71,18 @@ def list_memories() -> list[dict]:
 
 @mcp.tool()
 def delete_memory(id: str) -> dict:
-    """Delete a memory by its ID."""
     qdrant.delete(collection_name=COLLECTION, points_selector=[id])
     return {"status": "deleted", "id": id}
 
-# Use modern streamable HTTP transport at /mcp (default path)
-app = mcp.http_app(path="/mcp")   # ← this is the key change
+# Mount SSE at /mcp (legacy transport)
+sse_app = mcp.sse_app()
 
-# Add CORS so browser-based clients (like LoreBlendr inspector) can connect
+app = Starlette(
+    routes=[
+        Mount("/mcp", app=sse_app),
+    ]
+)
+
 app = CORSMiddleware(
     app=app,
     allow_origins=["*"],
