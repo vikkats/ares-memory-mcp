@@ -4,7 +4,6 @@ import requests
 
 from starlette.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
@@ -38,13 +37,8 @@ def embed(text: str):
     r.raise_for_status()
     return r.json()["data"][0]["embedding"]
 
-# THE MAGIC FIX: Turning off the strict host checker for Railway
-mcp = FastMCP(
-    "ares-memory",
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False
-    )
-)
+# THE NUCLEAR FIX: Forcing the host address to bypass security
+mcp = FastMCP("ares-memory", host="0.0.0.0")
 
 @mcp.tool()
 def store_memory(text: str) -> dict:
